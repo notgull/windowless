@@ -21,6 +21,10 @@
 #![forbid(unsafe_code)]
 #![no_std]
 
+extern crate alloc;
+
+use alloc::vec;
+
 use slotmap::{new_key_type, SlotMap};
 use smallvec::SmallVec;
 use tinyvec::ArrayVec;
@@ -96,15 +100,74 @@ impl WindowTable {
         };
 
         // If there is no root window, set this window as the root.
-        if self.root.is_none() {
-            self.root = Some(key);
-            return key;
+        let root = match self.root {
+            Some(root) => root,
+            None => {
+                self.root = Some(key);
+                return key;
+            }
+        };
+
+        // Get the intersections.
+        let (parents, _) = self.intersections(&[root], rect);
+
+        // Set children.
+        for parent in &parents {
+            self.windows[parent.0].children.push(key);
         }
 
-        let slot = self.windows.get_mut(key.0).unwrap();
-        todo!();
+        // Set parents.
+        self.windows[key.0].parents = parents;
 
         key
+    }
+
+    /// Get the windows that this rectangle intersects, at this root.
+    fn intersections(
+        &self,
+        roots: &[WindowKey],
+        rect: Rectangle
+    ) -> (SmallVec<[WindowKey; 3]>, bool) {
+        let mut windows = SmallVec::new();
+        let mut rectangles = tinyvec::tiny_vec![[Rectangle; 4] => rect];
+        let mut leftovers = true;
+
+        while !rectangles.is_empty() {
+            let rect = rectangles.swap_remove(0);
+
+            let intersect = roots.iter().find_map(|root| {
+                let window = self.windows[root.0].rect;
+                rect.intersection(window).map(|(i, r)| (i, r, root))
+            });
+
+            if let Some((intersection, remainder, matched_root)) = intersect {
+                // Re-run this code on the new root's children.
+                let (mut child_intersections, leftovers) = self.intersections(
+                    &self.windows[matched_root.0].children,
+                    intersection
+                );
+
+                // Append the results to our list.
+                windows.append(&mut child_intersections);
+
+                // If there are leftover rectangles, this root intersects.
+                if leftovers {
+                    windows.push(*matched_root);
+                }
+
+                // Try again for remainder.
+                rectangles.append(&mut tinyvec::TinyVec::Inline(remainder));
+            } else {
+                // There are leftover rectangles here.
+                leftovers = true;
+            }
+        }
+
+        // Remove duplicates.
+        windows.sort_unstable();
+        windows.dedup();
+
+        (windows, leftovers)
     }
 }
 
@@ -159,7 +222,7 @@ impl Rectangle {
     fn intersection(
         mut self,
         other: Self
-    ) -> Option<(Self, ArrayVec<[Self; 3]>)> {
+    ) -> Option<(Self, ArrayVec<[Self; 4]>)> {
         todo!() 
     }
 }
