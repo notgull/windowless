@@ -229,7 +229,7 @@ impl Rectangle {
 
 #[cfg(test)]
 mod tests {
-    use super::Rectangle;
+    use super::{Rectangle, WindowTable};
 
     #[test]
     fn intersect() {
@@ -240,5 +240,20 @@ mod tests {
 
         assert_eq!(a, Rectangle::new(5, 5, 10, 10));
         assert_eq!(b.as_slice(), &[Rectangle::new(10, 5, 15, 15)]);
+    }
+
+    #[test]
+    fn insert() {
+        let mut window_table = WindowTable::new();
+
+        // Inserting a single rectangle should install it as the root.
+        let rect1 = window_table.insert(Rectangle::new(0, 0, 100, 100));
+        assert_eq!(Some(rect1), window_table.root);
+        
+        {
+            let slot = &window_table.windows[rect1.0];
+            assert!(slot.children.is_empty());
+            assert!(slot.parents.is_empty());
+        }
     }
 }
